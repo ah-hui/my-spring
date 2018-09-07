@@ -4,7 +4,6 @@ import annotation.MyAutowired;
 import annotation.MyComponent;
 import annotation.MyValue;
 
-import javax.sound.midi.SoundbankResource;
 import java.io.File;
 import java.io.FileFilter;
 import java.lang.reflect.Field;
