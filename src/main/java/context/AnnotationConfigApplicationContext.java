@@ -1,14 +1,17 @@
 package context;
 
+import annotation.MyAutowired;
 import annotation.MyComponent;
 import annotation.MyValue;
 
+import javax.sound.midi.SoundbankResource;
 import java.io.File;
 import java.io.FileFilter;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -36,10 +39,16 @@ public class AnnotationConfigApplicationContext {
     /**
      * 构造方法
      *
-     * @param packageName 指定要扫描加载的包名
+     * @param packageNames 指定要扫描加载的包名
      */
-    public AnnotationConfigApplicationContext(String packageName) {
-        scanPkg(packageName);
+    public AnnotationConfigApplicationContext(String... packageNames) {
+        // 遍历扫描指定路径
+        for (String packageName : packageNames) {
+            System.out.println("正在扫描包：" + packageName);
+            scanPkg(packageName);
+        }
+        // 依赖注入
+        dependencyInjection();
     }
 
     /**
@@ -98,6 +107,68 @@ public class AnnotationConfigApplicationContext {
     }
 
     /**
+     * 依赖注入
+     * 获取所有beanDefinationFactory中的类对象，如果类中的属性上有@MyAutowired注解
+     * 则根据属性名从工厂中获取对象，没有则根据对象类型获取对象
+     * 最后注入到该属性
+     */
+    private void dependencyInjection() {
+        // 获取容器中所有的类
+        Collection<Class<?>> classes = beanDefinationFactory.values();
+        // 遍历
+        for (Class<?> cls : classes) {
+            // 获取类对象的全名（包名+类名）
+            String clsName = cls.getName();
+            // 获取类名
+            clsName = clsName.substring(clsName.lastIndexOf(".") + 1);
+            // 类名首字母小写
+            String beanName = String.valueOf(clsName.charAt(0)).toLowerCase() + clsName.substring(1);
+            // 获取类中的所有属性
+            Field[] fields = cls.getDeclaredFields();
+            // 遍历
+            for (Field field : fields) {
+                // 如果属性被@MyAutowired注解
+                if (field.isAnnotationPresent(MyAutowired.class)) {
+                    try {
+                        // 获取属性名
+                        String fieldName = field.getName();
+                        // 声明要注入的bean
+                        Object bean = null;
+                        // 首先根据属性名从容器中取出对象
+                        if (beanDefinationFactory.get(fieldName) != null) {
+                            bean = getBean(fieldName, field.getType());
+                        } else { // 否则使用属性类型从容器中获取对象
+                            // 获取属性类型
+                            String type = field.getType().getName();
+                            // 截取类名
+                            type = type.substring(type.lastIndexOf(".") + 1);
+                            // 首字母小写
+                            String fieldBean = String.valueOf(type.charAt(0)).toLowerCase() + type.substring(1);
+                            bean = getBean(fieldBean, field.getType());
+                        }
+                        // 如果要注入的bean不为空，则为该属性进行注入
+                        if (bean != null) {
+                            // 获取类的实例对象，它也在Map中
+                            Object clsBean = getBean(beanName, cls);
+                            // 设置该属性可访问
+                            field.setAccessible(true);
+                            // 为该属性注入bean
+                            // 第一个参数是【whose field should be modified】，第二个参数是【the new value】
+                            field.set(clsBean, bean);
+                            System.out.println("注入成功！");
+                        } else {
+                            System.out.println("注入失败！");
+                        }
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
+    }
+
+    /**
      * 根据传入的beanName获取容器中的对象
      *
      * @param beanName beanName
@@ -112,7 +183,7 @@ public class AnnotationConfigApplicationContext {
         String scope = annotation.scope();
         try {
             // 如果scope是单例，获取单例对象
-            if ("singleton".equals(scope)) {
+            if ("singleton".equals(scope) || "".equals(scope)) {
                 // 如果对象缓存中有，直接返回，否则实例化一个
                 if (singletonBeanFactory.get(beanName) == null) {
                     Object instance = cls.newInstance();
@@ -127,7 +198,7 @@ public class AnnotationConfigApplicationContext {
                 setFieldValues(cls, instance);
                 return instance;
             }
-            // 先就处理这两种，暂没有设置默认单例
+            // 先就处理这两种，默认单例
         } catch (IllegalAccessException e) {
             e.printStackTrace();
         } catch (InstantiationException e) {

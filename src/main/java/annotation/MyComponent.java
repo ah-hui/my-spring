@@ -20,6 +20,6 @@ public @interface MyComponent {
     /**
      * 为注解定义属性
      */
-    public String scope();
+    public String scope() default "";
 
 }
